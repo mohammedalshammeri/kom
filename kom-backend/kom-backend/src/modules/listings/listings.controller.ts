@@ -1,0 +1,155 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ListingsService } from './listings.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser, Public } from '../../common/decorators';
+import {
+  CreateListingDto,
+  UpdateListingDto,
+  ListingQueryDto,
+  CarDetailsDto,
+  PlateDetailsDto,
+  PartDetailsDto,
+} from './dto';
+
+@ApiTags('Listings')
+@Controller('listings')
+export class ListingsController {
+  constructor(private readonly listingsService: ListingsService) {}
+
+  // Public endpoints
+  @Public()
+  @Get()
+  @ApiOperation({ summary: 'Get all approved listings (public)' })
+  @ApiResponse({ status: 200, description: 'List of approved listings' })
+  async getPublicListings(@Query() query: ListingQueryDto) {
+    return this.listingsService.getPublicListings(query);
+  }
+
+  @Public()
+  @Get(':id')
+  @ApiOperation({ summary: 'Get listing by ID (public)' })
+  @ApiResponse({ status: 200, description: 'Listing details' })
+  @ApiResponse({ status: 404, description: 'Listing not found' })
+  async getPublicListingById(@Param('id') id: string) {
+    return this.listingsService.getPublicListingById(id);
+  }
+
+  // Owner endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('my/all')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get my listings' })
+  @ApiResponse({ status: 200, description: 'My listings' })
+  async getMyListings(@CurrentUser('id') userId: string, @Query() query: ListingQueryDto) {
+    return this.listingsService.getMyListings(userId, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('my/:id')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get my listing by ID' })
+  @ApiResponse({ status: 200, description: 'My listing details' })
+  async getMyListingById(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.listingsService.getMyListingById(userId, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post()
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Create a new listing' })
+  @ApiResponse({ status: 201, description: 'Listing created' })
+  async createListing(@CurrentUser('id') userId: string, @Body() dto: CreateListingDto) {
+    return this.listingsService.createListing(userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Update listing' })
+  @ApiResponse({ status: 200, description: 'Listing updated' })
+  async updateListing(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateListingDto,
+  ) {
+    return this.listingsService.updateListing(userId, id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/details/car')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Add/Update car details' })
+  @ApiResponse({ status: 200, description: 'Car details saved' })
+  async upsertCarDetails(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: CarDetailsDto,
+  ) {
+    return this.listingsService.upsertCarDetails(userId, id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/details/plate')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Add/Update plate details' })
+  @ApiResponse({ status: 200, description: 'Plate details saved' })
+  async upsertPlateDetails(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: PlateDetailsDto,
+  ) {
+    return this.listingsService.upsertPlateDetails(userId, id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/details/part')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Add/Update part details' })
+  @ApiResponse({ status: 200, description: 'Part details saved' })
+  async upsertPartDetails(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: PartDetailsDto,
+  ) {
+    return this.listingsService.upsertPartDetails(userId, id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/submit')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Submit listing for review' })
+  @ApiResponse({ status: 200, description: 'Listing submitted for review' })
+  @ApiResponse({ status: 400, description: 'Validation errors' })
+  async submitForReview(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.listingsService.submitForReview(userId, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Delete (archive) listing' })
+  @ApiResponse({ status: 200, description: 'Listing archived' })
+  async deleteListing(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.listingsService.deleteListing(userId, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/mark-sold')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Mark listing as sold' })
+  @ApiResponse({ status: 200, description: 'Listing marked as sold' })
+  async markAsSold(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.listingsService.markAsSold(userId, id);
+  }
+}

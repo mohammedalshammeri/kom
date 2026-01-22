@@ -1,0 +1,80 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { v2 as cloudinary } from 'cloudinary';
+
+@Injectable()
+export class CloudinaryService {
+  private readonly isConfigured: boolean;
+
+  constructor(private readonly configService: ConfigService) {
+    const cloudName = this.configService.get<string>('cloudinary.cloudName');
+    const apiKey = this.configService.get<string>('cloudinary.apiKey');
+    const apiSecret = this.configService.get<string>('cloudinary.apiSecret');
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      this.isConfigured = false;
+      return;
+    }
+
+    this.isConfigured = true;
+
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+      secure: true,
+    });
+  }
+
+  uploadBuffer(
+    buffer: Buffer,
+    options: {
+      folder: string;
+      resourceType: 'image' | 'video' | 'raw' | 'auto';
+    },
+  ): Promise<{
+    secureUrl: string;
+    publicId: string;
+    bytes?: number;
+    width?: number;
+    height?: number;
+    duration?: number;
+  }> {
+    if (!this.isConfigured) {
+      throw new BadRequestException(
+        'Cloudinary is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET',
+      );
+    }
+
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: options.folder,
+          resource_type: options.resourceType,
+        },
+        (error, result) => {
+          if (error || !result) {
+            const message =
+              (error as any)?.message ||
+              (error as any)?.error?.message ||
+              'Cloudinary upload failed';
+
+            reject(new BadRequestException(message));
+            return;
+          }
+
+          resolve({
+            secureUrl: result.secure_url,
+            publicId: result.public_id,
+            bytes: result.bytes,
+            width: result.width,
+            height: result.height,
+            duration: (result as any).duration,
+          });
+        },
+      );
+
+      stream.end(buffer);
+    });
+  }
+}

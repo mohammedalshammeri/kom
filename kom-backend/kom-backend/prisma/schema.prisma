@@ -1,0 +1,456 @@
+// Prisma Schema for KOM (King of the Market) Backend
+// Car Marketplace for Bahrain
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  USER_INDIVIDUAL
+  USER_SHOWROOM
+}
+
+enum ListingType {
+  CAR
+  PLATE
+  PART
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ARCHIVED
+  SOLD
+}
+
+enum Currency {
+  BHD
+}
+
+enum ContactPreference {
+  IN_APP_CHAT
+  WHATSAPP
+  CALL
+}
+
+enum Transmission {
+  AUTO
+  MANUAL
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+  ELECTRIC
+  HYBRID
+  OTHER
+}
+
+enum CarCondition {
+  NEW
+  USED
+}
+
+enum PartCondition {
+  NEW
+  USED
+  REFURBISHED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum StorageProvider {
+  S3
+  R2
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  LISTING_APPROVED
+  LISTING_REJECTED
+  LISTING_SUBMITTED
+  PAYMENT_RECEIVED
+  ACCOUNT_BANNED
+  ACCOUNT_UNBANNED
+  SYSTEM
+}
+
+enum ReportStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+// ==================== MODELS ====================
+
+model User {
+  id                    String    @id @default(uuid())
+  email                 String    @unique
+  phone                 String?   @unique
+  passwordHash          String?
+  role                  UserRole  @default(USER_INDIVIDUAL)
+  isActive              Boolean   @default(true)
+  isBanned              Boolean   @default(false)
+  bannedReason          String?
+  bannedAt              DateTime?
+  resetPasswordToken    String?   @unique
+  resetPasswordExpiry   DateTime?
+  lastLoginAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Relations
+  individualProfile IndividualProfile?
+  showroomProfile   ShowroomProfile?
+  listings          Listing[]
+  notifications     Notification[]
+  reports           Report[]           @relation("ReporterReports")
+  adminPermission   AdminPermission?
+  auditLogs         AuditLog[]
+  deviceTokens      DeviceToken[]
+  refreshTokens     RefreshToken[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+  @@index([isActive, isBanned])
+  @@index([resetPasswordToken])
+}
+
+model IndividualProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  fullName    String
+  governorate String?
+  city        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ShowroomProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  showroomName  String
+  crNumber      String?  // Commercial Registration Number
+  description   String?
+  governorate   String?
+  city          String?
+  address       String?
+  logoUrl       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactPhones ShowroomContactPhone[]
+}
+
+model ShowroomContactPhone {
+  id              String   @id @default(uuid())
+  showroomId      String
+  phone           String
+  label           String?  // e.g., "Main", "Sales", "WhatsApp"
+  isPrimary       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  // Relations
+  showroom ShowroomProfile @relation(fields: [showroomId], references: [id], onDelete: Cascade)
+
+  @@index([showroomId])
+}
+
+model Listing {
+  id                   String            @id @default(uuid())
+  ownerId              String
+  ownerType            UserRole          // INDIVIDUAL or SHOWROOM (inferred from user role)
+  type                 ListingType
+  status               ListingStatus     @default(DRAFT)
+  title                String
+  description          String?
+  price                Decimal           @db.Decimal(12, 3)
+  currency             Currency          @default(BHD)
+  locationGovernorate  String?
+  locationArea         String?
+  contactPreference    ContactPreference @default(CALL)
+  viewsCount           Int               @default(0)
+  favoritesCount       Int               @default(0)
+  postedAt             DateTime?
+  approvedAt           DateTime?
+  rejectedAt           DateTime?
+  rejectionReason      String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  // Relations
+  owner               User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  carDetails          CarDetails?
+  plateDetails        PlateDetails?
+  partDetails         PartDetails?
+  media               Media[]
+  paymentTransactions PaymentTransaction[]
+  reports             Report[]
+
+  @@index([ownerId])
+  @@index([type])
+  @@index([status])
+  @@index([price])
+  @@index([createdAt])
+  @@index([status, type])
+  @@index([status, createdAt])
+}
+
+model CarDetails {
+  id           String       @id @default(uuid())
+  listingId    String       @unique
+  make         String
+  model        String
+  year         Int
+  trim         String?
+  mileageKm    Int?
+  transmission Transmission @default(AUTO)
+  fuel         FuelType     @default(PETROL)
+  condition    CarCondition @default(USED)
+  color        String?
+  vin          String?
+  bodyType     String?
+  engineSize   String?
+  specs        Json?        // Additional specs as JSON
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([make])
+  @@index([model])
+  @@index([year])
+  @@index([make, model])
+}
+
+model PlateDetails {
+  id            String   @id @default(uuid())
+  listingId     String   @unique
+  plateNumber   String
+  plateCategory String   // e.g., "Private", "Special", "VIP"
+  plateCode     String?  // Letter code
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([plateNumber])
+  @@index([plateCategory])
+}
+
+model PartDetails {
+  id                     String        @id @default(uuid())
+  listingId              String        @unique
+  partCategory           String        // e.g., "Engine", "Body", "Interior", "Electronics"
+  partName               String?
+  compatibleCarMake      String?
+  compatibleCarModel     String?
+  compatibleYearFrom     Int?
+  compatibleYearTo       Int?
+  condition              PartCondition @default(USED)
+  partNumber             String?       // OEM or aftermarket part number
+  brand                  String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([partCategory])
+  @@index([compatibleCarMake])
+}
+
+model Media {
+  id              String          @id @default(uuid())
+  listingId       String
+  type            MediaType
+  storageProvider StorageProvider @default(S3)
+  objectKey       String
+  url             String
+  thumbnailUrl    String?
+  width           Int?
+  height          Int?
+  duration        Int?            // For videos, in seconds
+  fileSize        Int?            // In bytes
+  mimeType        String?
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([listingId, sortOrder])
+}
+
+model PaymentTransaction {
+  id          String        @id @default(uuid())
+  listingId   String
+  amount      Decimal       @db.Decimal(10, 3)
+  currency    Currency      @default(BHD)
+  status      PaymentStatus @default(PENDING)
+  provider    String?       // e.g., "benefit", "credimax", "manual"
+  providerRef String?       // External reference from payment provider
+  metadata    Json?         // Additional payment metadata
+  paidAt      DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([status])
+  @@index([providerRef])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  metadata  Json?            // Additional data (e.g., listingId, reason)
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+model Report {
+  id         String       @id @default(uuid())
+  reporterId String
+  listingId  String
+  reason     String
+  details    String?
+  status     ReportStatus @default(OPEN)
+  resolvedBy String?
+  resolvedAt DateTime?
+  resolution String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  // Relations
+  reporter User    @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  listing  Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([reporterId])
+  @@index([listingId])
+  @@index([status])
+}
+
+model AdminPermission {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  canReviewListings Boolean  @default(true)
+  canManageUsers    Boolean  @default(false)
+  canViewReports    Boolean  @default(true)
+  canManageAdmins   Boolean  @default(false)
+  canManageSettings Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  action     String   // e.g., "LISTING_APPROVED", "USER_BANNED", "ADMIN_CREATED"
+  entityType String   // e.g., "Listing", "User", "AdminPermission"
+  entityId   String
+  before     Json?    // State before action
+  after      Json?    // State after action
+  metadata   Json?    // Additional context
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  // Relations
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String   // "ios" or "android"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string") // "string", "number", "boolean", "json"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
