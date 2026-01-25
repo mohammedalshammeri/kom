@@ -11,6 +11,7 @@ import {
   LogoutDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  ChangePasswordDto,
   AuthResponseDto,
   UserResponseDto,
 } from './dto';
@@ -95,5 +96,20 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
     await this.authService.resetPassword(dto.token, dto.newPassword);
     return { message: 'Password reset successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Change password (authenticated)' })
+  @ApiResponse({ status: 200, description: 'Password changed successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid current password' })
+  async changePassword(
+    @CurrentUser('id') userId: string,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    await this.authService.changePassword(userId, dto.oldPassword, dto.newPassword);
+    return { message: 'Password changed successfully' };
   }
 }

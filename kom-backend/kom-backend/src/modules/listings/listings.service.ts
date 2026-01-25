@@ -636,4 +636,182 @@ export class ListingsService {
 
     return listing;
   }
+
+  // Favorites methods
+  async getFavoriteStatus(listingId: string, userId?: string) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { id: true, favoritesCount: true },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
+    let isFavorited = false;
+    if (userId) {
+      const favorite = await this.prisma.favorite.findUnique({
+        where: {
+          userId_listingId: {
+            userId,
+            listingId,
+          },
+        },
+      });
+      isFavorited = !!favorite;
+    }
+
+    return {
+      isFavorited,
+      favoritesCount: listing.favoritesCount,
+    };
+  }
+
+  async addToFavorites(userId: string, listingId: string) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
+    // Check if already favorited
+    const existing = await this.prisma.favorite.findUnique({
+      where: {
+        userId_listingId: {
+          userId,
+          listingId,
+        },
+      },
+    });
+
+    if (existing) {
+      return { message: 'Already in favorites' };
+    }
+
+    // Add to favorites and increment count
+    await this.prisma.$transaction([
+      this.prisma.favorite.create({
+        data: {
+          userId,
+          listingId,
+        },
+      }),
+      this.prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          favoritesCount: {
+            increment: 1,
+          },
+        },
+      }),
+    ]);
+
+    return { message: 'Added to favorites' };
+  }
+
+  async removeFromFavorites(userId: string, listingId: string) {
+    const favorite = await this.prisma.favorite.findUnique({
+      where: {
+        userId_listingId: {
+          userId,
+          listingId,
+        },
+      },
+    });
+
+    if (!favorite) {
+      return { message: 'Not in favorites' };
+    }
+
+    // Remove from favorites and decrement count
+    await this.prisma.$transaction([
+      this.prisma.favorite.delete({
+        where: {
+          userId_listingId: {
+            userId,
+            listingId,
+          },
+        },
+      }),
+      this.prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          favoritesCount: {
+            decrement: 1,
+          },
+        },
+      }),
+    ]);
+
+    return { message: 'Removed from favorites' };
+  }
+
+  async getMyFavorites(userId: string, query: ListingQueryDto) {
+    const {
+      page = 1,
+      limit = 20,
+      type,
+    } = query;
+
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.FavoriteWhereInput = {
+      userId,
+      listing: {
+        status: ListingStatus.APPROVED,
+        ...(type && { type }),
+      },
+    };
+
+    const [favorites, total] = await Promise.all([
+      this.prisma.favorite.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          listing: {
+            include: {
+              media: {
+                orderBy: { sortOrder: 'asc' },
+                take: 1,
+              },
+              owner: {
+                select: {
+                  id: true,
+                  email: true,
+                  phone: true,
+                  individualProfile: {
+                    select: {
+                      fullName: true,
+                    },
+                  },
+                  showroomProfile: {
+                    select: {
+                      showroomName: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.favorite.count({ where }),
+    ]);
+
+    const listings = favorites.map((f) => f.listing);
+
+    return {
+      data: listings,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
 }

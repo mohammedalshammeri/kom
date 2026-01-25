@@ -1,5 +1,7 @@
-import { Controller, Get, Patch, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Patch, Post, Delete, Body, Param, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, Public } from '../../common/decorators';
@@ -26,6 +28,33 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Profile updated' })
   async updateMyProfile(@CurrentUser('id') userId: string, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/avatar')
+  @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload user avatar' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Avatar uploaded' })
+  async uploadAvatar(
+    @CurrentUser('id') userId: string,
+    @UploadedFile() file: { buffer: Buffer; mimetype?: string; size?: number },
+  ) {
+    return this.usersService.uploadAvatar(userId, file);
   }
 
   @UseGuards(JwtAuthGuard)

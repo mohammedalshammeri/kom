@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CloudinaryService } from '../media/cloudinary.service';
 import { UserRole } from '@prisma/client';
 import { UpdateProfileDto, UpdateShowroomPhoneDto } from './dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   async getUserProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -50,6 +54,7 @@ export class UsersService {
             fullName: dto.fullName,
             governorate: dto.governorate,
             city: dto.city,
+            avatarUrl: dto.avatarUrl,
           },
         });
       } else {
@@ -59,6 +64,7 @@ export class UsersService {
             fullName: dto.fullName || 'User',
             governorate: dto.governorate,
             city: dto.city,
+            avatarUrl: dto.avatarUrl,
           },
         });
       }
@@ -236,5 +242,70 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  async uploadAvatar(
+    userId: string,
+    file: { buffer: Buffer; mimetype?: string; size?: number },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        individualProfile: true,
+        showroomProfile: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!file || !file.buffer) {
+      throw new BadRequestException('File is required');
+    }
+
+    const folder = `users/${userId}/avatar`;
+    const resourceType = 'image';
+
+    let uploaded;
+    try {
+      uploaded = await this.cloudinaryService.uploadBuffer(file.buffer, {
+        folder,
+        resourceType,
+      });
+    } catch (err: any) {
+      const message = err?.message || 'Image upload failed';
+      throw new BadRequestException(message);
+    }
+
+    const url = uploaded.secureUrl;
+
+    if (user.role === UserRole.USER_INDIVIDUAL) {
+      if (user.individualProfile) {
+        await this.prisma.individualProfile.update({
+          where: { userId },
+          data: { avatarUrl: url },
+        });
+      } else {
+        await this.prisma.individualProfile.create({
+          data: {
+            userId,
+            fullName: 'User',
+            avatarUrl: url,
+          },
+        });
+      }
+    } else if (user.role === UserRole.USER_SHOWROOM) {
+      if (user.showroomProfile) {
+        await this.prisma.showroomProfile.update({
+          where: { userId },
+          data: { logoUrl: url },
+        });
+      } else {
+        throw new BadRequestException('Showroom profile not set up completely');
+      }
+    }
+
+    return { url };
   }
 }

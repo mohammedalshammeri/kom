@@ -59,6 +59,16 @@ export class CloudinaryService {
               (error as any)?.error?.message ||
               'Cloudinary upload failed';
 
+            // Common misconfiguration: cloud name doesn't match the API key/secret account.
+            if (typeof message === 'string' && message.toLowerCase().includes('invalid cloud_name')) {
+              reject(
+                new BadRequestException(
+                  'Cloudinary configuration error: Invalid cloud name. Set CLOUDINARY_CLOUD_NAME to your Cloudinary account cloud name (the one shown in Cloudinary dashboard), then restart the backend.',
+                ),
+              );
+              return;
+            }
+
             reject(new BadRequestException(message));
             return;
           }

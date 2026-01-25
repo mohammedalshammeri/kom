@@ -36,13 +36,42 @@ export class ListingsController {
     return this.listingsService.getPublicListings(query);
   }
 
+  // Favorites endpoints (MUST come before /:id to avoid route conflicts!)
+  @UseGuards(JwtAuthGuard)
+  @Get('favorites')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get my favorite listings' })
+  @ApiResponse({ status: 200, description: 'List of favorite listings' })
+  async getMyFavorites(@CurrentUser('id') userId: string, @Query() query: ListingQueryDto) {
+    return this.listingsService.getMyFavorites(userId, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Public()
-  @Get(':id')
-  @ApiOperation({ summary: 'Get listing by ID (public)' })
-  @ApiResponse({ status: 200, description: 'Listing details' })
-  @ApiResponse({ status: 404, description: 'Listing not found' })
-  async getPublicListingById(@Param('id') id: string) {
-    return this.listingsService.getPublicListingById(id);
+  @Get(':id/favorite-status')
+  @ApiOperation({ summary: 'Get favorite status for a listing' })
+  @ApiResponse({ status: 200, description: 'Favorite status' })
+  @ApiBearerAuth('JWT-auth')
+  async getFavoriteStatus(@Param('id') id: string, @CurrentUser('id') userId?: string) {
+    return this.listingsService.getFavoriteStatus(id, userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/favorite')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Add listing to favorites' })
+  @ApiResponse({ status: 201, description: 'Listing added to favorites' })
+  async addToFavorites(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.listingsService.addToFavorites(userId, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id/favorite')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Remove listing from favorites' })
+  @ApiResponse({ status: 200, description: 'Listing removed from favorites' })
+  async removeFromFavorites(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.listingsService.removeFromFavorites(userId, id);
   }
 
   // Owner endpoints
@@ -151,5 +180,15 @@ export class ListingsController {
   @ApiResponse({ status: 200, description: 'Listing marked as sold' })
   async markAsSold(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.listingsService.markAsSold(userId, id);
+  }
+
+  // Generic :id route MUST be last to avoid catching specific routes like /favorites
+  @Public()
+  @Get(':id')
+  @ApiOperation({ summary: 'Get listing by ID (public)' })
+  @ApiResponse({ status: 200, description: 'Listing details' })
+  @ApiResponse({ status: 404, description: 'Listing not found' })
+  async getPublicListingById(@Param('id') id: string) {
+    return this.listingsService.getPublicListingById(id);
   }
 }

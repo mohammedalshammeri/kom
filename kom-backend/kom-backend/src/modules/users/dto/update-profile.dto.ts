@@ -10,6 +10,11 @@ export class UpdateProfileDto {
   @MaxLength(100)
   fullName?: string;
 
+  @ApiPropertyOptional({ example: 'https://cdn.kom.bh/avatars/user123.png' })
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
+
   // Showroom profile fields
   @ApiPropertyOptional({ example: 'ABC Motors' })
   @IsOptional()

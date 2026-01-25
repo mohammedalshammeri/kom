@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { json, urlencoded } from 'express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -7,6 +8,9 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(json({ limit: '100mb' }));
+  app.use(urlencoded({ extended: true, limit: '100mb' }));
 
   // Global prefix
   const apiPrefix = process.env.API_PREFIX || 'api/v1';

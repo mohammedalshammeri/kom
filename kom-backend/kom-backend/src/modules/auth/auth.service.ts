@@ -310,6 +310,28 @@ export class AuthService {
     });
   }
 
+  async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.passwordHash) {
+      throw new BadRequestException('User not found or has no password set');
+    }
+
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!isPasswordValid) {
+      throw new BadRequestException('Invalid current password');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: hashedPassword },
+    });
+  }
+
   async validateUser(payload: TokenPayload) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
