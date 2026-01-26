@@ -1,0 +1,228 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { PaginatedResponse } from '../../common/dto';
+import { ChatMessagesQueryDto, SendMessageDto, StartChatDto } from './dto/chat.dto';
+
+@Injectable()
+export class ChatsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private getDisplayName(user: any): string {
+    return (
+      user?.individualProfile?.fullName ||
+      user?.showroomProfile?.showroomName ||
+      user?.email ||
+      'مستخدم'
+    );
+  }
+
+  private getAvatar(user: any): string | undefined {
+    return user?.individualProfile?.avatarUrl || user?.showroomProfile?.logoUrl;
+  }
+
+  private orderPair(a: string, b: string): [string, string] {
+    return a < b ? [a, b] : [b, a];
+  }
+
+  async startChat(userId: string, dto: StartChatDto) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: dto.listingId },
+      include: {
+        media: { orderBy: { sortOrder: 'asc' }, take: 1 },
+        owner: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            individualProfile: { select: { fullName: true, avatarUrl: true } },
+            showroomProfile: { select: { showroomName: true, logoUrl: true } },
+          },
+        },
+      },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
+    const otherUserId = listing.ownerId;
+    if (!otherUserId) {
+      throw new BadRequestException('Listing owner not found');
+    }
+
+    if (otherUserId === userId) {
+      throw new BadRequestException('Cannot start chat with yourself');
+    }
+
+    const [userAId, userBId] = this.orderPair(userId, otherUserId);
+
+    const existing = await this.prisma.chatThread.findUnique({
+      where: {
+        listingId_userAId_userBId: {
+          listingId: listing.id,
+          userAId,
+          userBId,
+        },
+      },
+    });
+
+    const thread = existing
+      ? existing
+      : await this.prisma.chatThread.create({
+          data: {
+            listingId: listing.id,
+            userAId,
+            userBId,
+          },
+        });
+
+    const otherUser = listing.owner;
+
+    return {
+      id: thread.id,
+      listingId: listing.id,
+      listingTitle: listing.title,
+      listingImage: listing.media?.[0]?.thumbnailUrl || listing.media?.[0]?.url,
+      otherUserId: otherUser.id,
+      otherUserName: this.getDisplayName(otherUser),
+      otherUserAvatar: this.getAvatar(otherUser),
+    };
+  }
+
+  async getMyChats(userId: string) {
+    const threads = await this.prisma.chatThread.findMany({
+      where: {
+        OR: [{ userAId: userId }, { userBId: userId }],
+      },
+      include: {
+        listing: {
+          select: {
+            id: true,
+            title: true,
+            media: { orderBy: { sortOrder: 'asc' }, take: 1 },
+          },
+        },
+        userA: {
+          select: {
+            id: true,
+            email: true,
+            individualProfile: { select: { fullName: true, avatarUrl: true } },
+            showroomProfile: { select: { showroomName: true, logoUrl: true } },
+          },
+        },
+        userB: {
+          select: {
+            id: true,
+            email: true,
+            individualProfile: { select: { fullName: true, avatarUrl: true } },
+            showroomProfile: { select: { showroomName: true, logoUrl: true } },
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const threadIds = threads.map((t: any) => t.id);
+    const unreadCounts = threadIds.length
+      ? await this.prisma.chatMessage.groupBy({
+          by: ['threadId'],
+          where: {
+            threadId: { in: threadIds },
+            senderId: { not: userId },
+            isRead: false,
+          },
+          _count: { _all: true },
+        })
+      : [];
+
+    const unreadMap = new Map(unreadCounts.map((c: any) => [c.threadId, c._count._all]));
+
+    return threads.map((thread: any) => {
+      const otherUser = thread.userA.id === userId ? thread.userB : thread.userA;
+      return {
+        id: thread.id,
+        listingId: thread.listing.id,
+        listingTitle: thread.listing.title,
+        listingImage: thread.listing.media?.[0]?.thumbnailUrl || thread.listing.media?.[0]?.url,
+        otherUserId: otherUser.id,
+        otherUserName: this.getDisplayName(otherUser),
+        otherUserAvatar: this.getAvatar(otherUser),
+        lastMessage: thread.lastMessageText || undefined,
+        lastMessageTime: thread.lastMessageAt || undefined,
+        unreadCount: unreadMap.get(thread.id) || 0,
+        isOnline: false,
+      };
+    });
+  }
+
+  async getMessages(userId: string, threadId: string, query: ChatMessagesQueryDto) {
+    const { page = 1, limit = 30 } = query;
+    const skip = (page - 1) * limit;
+
+    const thread = await this.prisma.chatThread.findUnique({
+      where: { id: threadId },
+    });
+
+    if (!thread) {
+      throw new NotFoundException('Chat not found');
+    }
+
+    if (thread.userAId !== userId && thread.userBId !== userId) {
+      throw new BadRequestException('Not a participant in this chat');
+    }
+
+    const [messages, total] = await Promise.all([
+      this.prisma.chatMessage.findMany({
+        where: { threadId },
+        orderBy: { createdAt: 'asc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.chatMessage.count({ where: { threadId } }),
+    ]);
+
+    await this.prisma.chatMessage.updateMany({
+      where: {
+        threadId,
+        senderId: { not: userId },
+        isRead: false,
+      },
+      data: { isRead: true },
+    });
+
+    return new PaginatedResponse(messages, total, page, limit);
+  }
+
+  async sendMessage(userId: string, threadId: string, dto: SendMessageDto) {
+    const thread = await this.prisma.chatThread.findUnique({
+      where: { id: threadId },
+    });
+
+    if (!thread) {
+      throw new NotFoundException('Chat not found');
+    }
+
+    if (thread.userAId !== userId && thread.userBId !== userId) {
+      throw new BadRequestException('Not a participant in this chat');
+    }
+
+    const message = await this.prisma.chatMessage.create({
+      data: {
+        threadId,
+        senderId: userId,
+        text: dto.text.trim(),
+      },
+    });
+
+    await this.prisma.chatThread.update({
+      where: { id: threadId },
+      data: {
+        lastMessageText: message.text,
+        lastMessageAt: message.createdAt,
+        lastMessageSenderId: userId,
+      },
+    });
+
+    return message;
+  }
+}

@@ -11,7 +11,7 @@ import {
   IsEnum,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { UserRole } from '@prisma/client';
 import { PaginationDto } from '../../../common/dto';
 
@@ -75,9 +75,8 @@ export class UpdateAdminPermissionsDto {
 export class AdminQueryDto extends PaginationDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsBoolean()
-  @Type(() => Boolean)
-  isActive?: boolean;
+  @IsString()
+  isActive?: string;
 }
 
 export class UserQueryDto extends PaginationDto {
@@ -88,9 +87,13 @@ export class UserQueryDto extends PaginationDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsBoolean()
-  @Type(() => Boolean)
-  isBanned?: boolean;
+  @IsString()
+  isBanned?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  isActive?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

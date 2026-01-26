@@ -6,7 +6,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ListingType, ListingStatus, UserRole, PaymentStatus, Prisma } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  ListingType,
+  ListingStatus,
+  UserRole,
+  PaymentStatus,
+  Prisma,
+  NotificationType,
+} from '@prisma/client';
 import {
   CreateListingDto,
   UpdateListingDto,
@@ -22,6 +30,7 @@ export class ListingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async createListing(userId: string, dto: CreateListingDto) {
@@ -211,6 +220,9 @@ export class ListingsService {
         paymentTransactions: {
           where: { status: PaymentStatus.PAID },
         },
+        owner: {
+          select: { email: true, role: true },
+        },
       },
     });
 
@@ -302,6 +314,19 @@ export class ListingsService {
         partDetails: true,
       },
     });
+
+    await this.notificationsService.notifyAdmins(
+      NotificationType.SYSTEM,
+      'إعلان جديد بانتظار المراجعة',
+      `تم إرسال إعلان جديد للمراجعة: ${updated.title}`,
+      {
+        listingId: updated.id,
+        title: updated.title,
+        type: updated.type,
+        ownerEmail: listing.owner?.email,
+        ownerRole: listing.owner?.role,
+      },
+    );
 
     return updated;
   }

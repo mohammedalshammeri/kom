@@ -1,44 +1,57 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ReportStatus, ListingStatus, Prisma } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+import { ReportStatus, ListingStatus, Prisma, ReportType } from '@prisma/client';
 import { PaginatedResponse } from '../../common/dto';
 import { CreateReportDto, ReportQueryDto, ResolveReportDto } from './dto';
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async createReport(userId: string, dto: CreateReportDto) {
-    // Check if listing exists and is visible
-    const listing = await this.prisma.listing.findUnique({
-      where: { id: dto.listingId },
-    });
+    const type = dto.type ?? ReportType.LISTING;
 
-    if (!listing) {
-      throw new NotFoundException('Listing not found');
-    }
+    if (type === ReportType.LISTING) {
+      if (!dto.listingId) {
+        throw new BadRequestException('Listing ID is required for listing reports');
+      }
 
-    if (listing.status !== ListingStatus.APPROVED && listing.status !== ListingStatus.SOLD) {
-      throw new BadRequestException('Can only report visible listings');
-    }
+      // Check if listing exists and is visible
+      const listing = await this.prisma.listing.findUnique({
+        where: { id: dto.listingId },
+      });
 
-    // Check if user already reported this listing
-    const existingReport = await this.prisma.report.findFirst({
-      where: {
-        reporterId: userId,
-        listingId: dto.listingId,
-        status: { in: [ReportStatus.OPEN, ReportStatus.UNDER_REVIEW] },
-      },
-    });
+      if (!listing) {
+        throw new NotFoundException('Listing not found');
+      }
 
-    if (existingReport) {
-      throw new BadRequestException('You have already reported this listing');
+      if (listing.status !== ListingStatus.APPROVED && listing.status !== ListingStatus.SOLD) {
+        throw new BadRequestException('Can only report visible listings');
+      }
+
+      // Check if user already reported this listing
+      const existingReport = await this.prisma.report.findFirst({
+        where: {
+          reporterId: userId,
+          listingId: dto.listingId,
+          status: { in: [ReportStatus.OPEN, ReportStatus.UNDER_REVIEW] },
+        },
+      });
+
+      if (existingReport) {
+        throw new BadRequestException('You have already reported this listing');
+      }
     }
 
     const report = await this.prisma.report.create({
       data: {
         reporterId: userId,
-        listingId: dto.listingId,
+        listingId: type === ReportType.LISTING ? dto.listingId : null,
+        type,
         reason: dto.reason,
         details: dto.details,
         status: ReportStatus.OPEN,
@@ -56,6 +69,10 @@ export class ReportsService {
 
     if (query.status) {
       where.status = query.status;
+    }
+
+    if (query.type) {
+      where.type = query.type;
     }
 
     const [reports, total] = await Promise.all([
@@ -89,6 +106,10 @@ export class ReportsService {
 
     if (query.status) {
       where.status = query.status;
+    }
+
+    if (query.type) {
+      where.type = query.type;
     }
 
     const [reports, total] = await Promise.all([
@@ -202,6 +223,17 @@ export class ReportsService {
         after: { status: updated.status, resolution: dto.resolution },
       },
     });
+
+    const statusLabel = dto.action === 'resolve' ? 'تم حل الشكوى' : 'تم إغلاق الشكوى';
+    const body = dto.resolution?.trim()
+      ? `${statusLabel}. الرد: ${dto.resolution.trim()}`
+      : statusLabel;
+
+    await this.notificationsService.sendSystemNotification(
+      report.reporterId,
+      'تحديث على الشكوى',
+      body,
+    );
 
     return updated;
   }

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { UserRole, Prisma } from '@prisma/client';
+import { UserRole, Prisma, ListingStatus } from '@prisma/client';
 import { PaginatedResponse, PaginationDto } from '../../common/dto';
 import * as bcrypt from 'bcrypt';
 import {
@@ -24,6 +24,19 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  async fixShowrooms() {
+    const res = await this.prisma.user.updateMany({
+      where: {
+        role: UserRole.USER_SHOWROOM,
+        isActive: true,
+      },
+      data: {
+        isActive: false,
+      },
+    });
+    return { message: `Fixed ${res.count} showroom accounts` };
+  }
 
   // Admin user management (Super Admin only)
   async createAdmin(superAdminId: string, dto: CreateAdminDto) {
@@ -133,8 +146,9 @@ export class AdminService {
       role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
     };
 
-    if (query.isActive !== undefined) {
-      where.isActive = query.isActive;
+    const isActive = this.parseBooleanQuery(query.isActive);
+    if (isActive !== undefined) {
+      where.isActive = isActive;
     }
 
     const [admins, total] = await Promise.all([
@@ -195,6 +209,7 @@ export class AdminService {
 
   // User management (for admins with permission)
   async getAllUsers(query: UserQueryDto) {
+    console.log('AdminService.getAllUsers query:', query);
     const { page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
@@ -206,8 +221,14 @@ export class AdminService {
       where.role = query.role;
     }
 
-    if (query.isBanned !== undefined) {
-      where.isBanned = query.isBanned;
+    const isActive = this.parseBooleanQuery(query.isActive);
+    if (isActive !== undefined) {
+      where.isActive = isActive;
+    }
+
+    const isBanned = this.parseBooleanQuery(query.isBanned);
+    if (isBanned !== undefined) {
+      where.isBanned = isBanned;
     }
 
     if (query.search) {
@@ -232,7 +253,7 @@ export class AdminService {
           createdAt: true,
           lastLoginAt: true,
           individualProfile: { select: { fullName: true } },
-          showroomProfile: { select: { showroomName: true } },
+          showroomProfile: { select: { showroomName: true, crNumber: true } },
           _count: { select: { listings: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -288,6 +309,67 @@ export class AdminService {
     }
 
     return user;
+  }
+
+  async approveUser(adminId: string, userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isActive) {
+      throw new BadRequestException('User is already active');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { isActive: true },
+    });
+
+    // Create audit log
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: adminId,
+        action: 'USER_APPROVED',
+        entityType: 'User',
+        entityId: userId,
+        before: { isActive: false },
+        after: { isActive: true },
+      },
+    });
+
+    // Notify user (Optional: Implement notification service for approval)
+    // await this.notificationsService.notifyAccountApproved(userId);
+
+    return { message: 'User approved successfully' };
+  }
+
+  async rejectUser(adminId: string, userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Capture data for log before delete
+    const userData = { email: user.email, role: user.role };
+
+    await this.prisma.user.delete({
+      where: { id: userId },
+    });
+
+    // Create audit log
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: adminId,
+        action: 'USER_REJECTED',
+        entityType: 'User',
+        entityId: userId,
+        before: { userData },
+        after: Prisma.JsonNull,
+      },
+    });
+
+    return { message: 'User rejected and deleted' };
   }
 
   async banUser(adminId: string, userId: string, dto: BanUserDto) {
@@ -472,6 +554,17 @@ export class AdminService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const listingStatsWhere = {
+      status: {
+        in: [
+          ListingStatus.PENDING_REVIEW,
+          ListingStatus.APPROVED,
+          ListingStatus.REJECTED,
+          ListingStatus.SOLD,
+        ],
+      },
+    };
+
     const [totalUsers, newUsersToday, totalListings, pendingListings, activeListings, openReports] =
       await Promise.all([
         this.prisma.user.count({
@@ -483,9 +576,9 @@ export class AdminService {
             createdAt: { gte: today },
           },
         }),
-        this.prisma.listing.count(),
-        this.prisma.listing.count({ where: { status: 'PENDING_REVIEW' } }),
-        this.prisma.listing.count({ where: { status: 'APPROVED' } }),
+        this.prisma.listing.count({ where: listingStatsWhere }),
+        this.prisma.listing.count({ where: { status: ListingStatus.PENDING_REVIEW } }),
+        this.prisma.listing.count({ where: { status: ListingStatus.APPROVED } }),
         this.prisma.report.count({ where: { status: 'OPEN' } }),
       ]);
 
@@ -499,6 +592,7 @@ export class AdminService {
     // Listings by type
     const listingsByType = await this.prisma.listing.groupBy({
       by: ['type'],
+      where: listingStatsWhere,
       _count: true,
     });
 
@@ -535,5 +629,13 @@ export class AdminService {
       default:
         return value;
     }
+  }
+
+  private parseBooleanQuery(value?: string): boolean | undefined {
+    if (value === undefined) return undefined;
+    const normalized = String(value).toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    return undefined;
   }
 }

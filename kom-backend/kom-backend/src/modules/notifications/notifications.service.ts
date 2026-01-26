@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PushService } from './push.service';
-import { NotificationType, Prisma } from '@prisma/client';
+import { NotificationType, Prisma, UserRole } from '@prisma/client';
 import { PaginationDto, PaginatedResponse } from '../../common/dto';
 
 @Injectable()
@@ -196,5 +196,33 @@ export class NotificationsService {
 
   async sendSystemNotification(userId: string, title: string, body: string) {
     return this.createNotification(userId, NotificationType.SYSTEM, title, body, {});
+  }
+
+  async notifyAdmins(
+    type: NotificationType,
+    title: string,
+    body: string,
+    metadata?: Prisma.InputJsonValue,
+  ) {
+    const admins = await this.prisma.user.findMany({
+      where: {
+        role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
+        isActive: true,
+        isBanned: false,
+      },
+      select: { id: true },
+    });
+
+    if (admins.length === 0) {
+      return { count: 0 };
+    }
+
+    await Promise.all(
+      admins.map((admin) =>
+        this.createNotification(admin.id, type, title, body, metadata, false),
+      ),
+    );
+
+    return { count: admins.length };
   }
 }

@@ -8,15 +8,20 @@ import {
   MinLength,
   MaxLength,
 } from 'class-validator';
-import { ReportStatus } from '@prisma/client';
+import { ReportStatus, ReportType } from '@prisma/client';
 import { PaginationDto } from '../../../common/dto';
 
 export class CreateReportDto {
-  @ApiProperty({ example: 'uuid-of-listing' })
+  @ApiPropertyOptional({ enum: ReportType, example: ReportType.LISTING })
+  @IsOptional()
+  @IsEnum(ReportType)
+  type?: ReportType;
+
+  @ApiPropertyOptional({ example: 'uuid-of-listing' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @IsUUID()
-  listingId: string;
+  listingId?: string;
 
   @ApiProperty({
     example: 'Suspicious listing',
@@ -43,6 +48,11 @@ export class ReportQueryDto extends PaginationDto {
   @IsOptional()
   @IsEnum(ReportStatus)
   status?: ReportStatus;
+
+  @ApiPropertyOptional({ enum: ReportType })
+  @IsOptional()
+  @IsEnum(ReportType)
+  type?: ReportType;
 }
 
 export class ResolveReportDto {

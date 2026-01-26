@@ -16,7 +16,7 @@ export class ReportsController {
 
   // User endpoints
   @Post()
-  @ApiOperation({ summary: 'Report a listing' })
+  @ApiOperation({ summary: 'Create a report or complaint' })
   @ApiResponse({ status: 201, description: 'Report created' })
   async createReport(@CurrentUser('id') userId: string, @Body() dto: CreateReportDto) {
     return this.reportsService.createReport(userId, dto);

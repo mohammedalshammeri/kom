@@ -102,6 +102,11 @@ enum ReportStatus {
   DISMISSED
 }
 
+enum ReportType {
+  LISTING
+  COMPLAINT
+}
+
 // ==================== MODELS ====================
 
 model User {
@@ -131,6 +136,9 @@ model User {
   deviceTokens      DeviceToken[]
   refreshTokens     RefreshToken[]
   favorites         Favorite[]
+  chatThreadsA      ChatThread[]       @relation("ChatUserA")
+  chatThreadsB      ChatThread[]       @relation("ChatUserB")
+  chatMessages      ChatMessage[]      @relation("ChatMessageSender")
 
   @@index([email])
   @@index([phone])
@@ -216,6 +224,7 @@ model Listing {
   paymentTransactions PaymentTransaction[]
   reports             Report[]
   favorites           Favorite[]
+  chatThreads         ChatThread[]
 
   @@index([ownerId])
   @@index([type])
@@ -224,6 +233,43 @@ model Listing {
   @@index([createdAt])
   @@index([status, type])
   @@index([status, createdAt])
+}
+
+model ChatThread {
+  id                 String      @id @default(uuid())
+  listingId          String
+  userAId            String
+  userBId            String
+  lastMessageText    String?
+  lastMessageAt      DateTime?
+  lastMessageSenderId String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  listing   Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  userA     User      @relation("ChatUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB     User      @relation("ChatUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+
+  @@unique([listingId, userAId, userBId])
+  @@index([listingId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  threadId  String
+  senderId  String
+  text      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User       @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@index([senderId])
 }
 
 model CarDetails {
@@ -359,7 +405,8 @@ model Notification {
 model Report {
   id         String       @id @default(uuid())
   reporterId String
-  listingId  String
+  listingId  String?
+  type       ReportType   @default(LISTING)
   reason     String
   details    String?
   status     ReportStatus @default(OPEN)
@@ -371,11 +418,12 @@ model Report {
 
   // Relations
   reporter User    @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
-  listing  Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listing  Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
   @@index([reporterId])
   @@index([listingId])
   @@index([status])
+  @@index([type])
 }
 
 model AdminPermission {

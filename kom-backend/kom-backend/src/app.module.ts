@@ -15,6 +15,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ReportsModule } from './modules/reports/reports.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { HealthModule } from './modules/health/health.module';
+import { ChatsModule } from './modules/chats/chats.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -56,6 +57,7 @@ import configuration from './config/configuration';
     PaymentsModule,
     NotificationsModule,
     ReportsModule,
+    ChatsModule,
     AdminModule,
     HealthModule,
   ],

@@ -11,7 +11,8 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UserRole } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType, UserRole } from '@prisma/client';
 import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, TokenPayload } from './dto';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
@@ -50,6 +52,7 @@ export class AuthService {
           phone: dto.phone,
           passwordHash: hashedPassword,
           role,
+          isActive: role === UserRole.USER_SHOWROOM ? false : true,
         },
       });
 
@@ -80,6 +83,34 @@ export class AuthService {
 
       return newUser;
     });
+
+    await this.notificationsService.notifyAdmins(
+      NotificationType.SYSTEM,
+      'تسجيل حساب جديد',
+      role === UserRole.USER_SHOWROOM
+        ? `تم تسجيل معرض جديد (${user.email}) ويحتاج للمراجعة.`
+        : `تم تسجيل حساب فرد جديد (${user.email}).`,
+      {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        userType: role === UserRole.USER_SHOWROOM ? 'SHOWROOM' : 'INDIVIDUAL',
+      },
+    );
+
+    if (role === UserRole.USER_SHOWROOM) {
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+        },
+        accessToken: null as any, // Not issuing tokens for pending showrooms
+        refreshToken: null as any,
+        message: 'Registration successful. Your account is under review.',
+      } as any;
+    }
 
     // Generate tokens
     const tokens = await this.generateTokens(user.id, user.email, user.role);

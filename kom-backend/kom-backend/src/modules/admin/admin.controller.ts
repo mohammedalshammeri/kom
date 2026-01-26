@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { CurrentUser, Roles } from '../../common/decorators';
+import { CurrentUser, Roles, Public } from '../../common/decorators';
 import { UserRole } from '@prisma/client';
 import {
   CreateAdminDto,
@@ -29,6 +29,12 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Dashboard stats' })
   async getDashboardStats() {
     return this.adminService.getDashboardStats();
+  }
+
+  @Post('fix-showrooms')
+  @Public() // Temporary for fixing
+  async fixShowrooms() {
+    return this.adminService.fixShowrooms();
   }
 
   // Admin user management (Super Admin only)
@@ -103,6 +109,22 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'User unbanned' })
   async unbanUser(@CurrentUser('id') adminId: string, @Param('id') userId: string) {
     return this.adminService.unbanUser(adminId, userId);
+  }
+
+  @Patch('users/:id/approve')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Approve a showroom user' })
+  @ApiResponse({ status: 200, description: 'User approved' })
+  async approveUser(@CurrentUser('id') adminId: string, @Param('id') userId: string) {
+    return this.adminService.approveUser(adminId, userId);
+  }
+
+  @Post('users/:id/reject')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Reject a showroom user (deletes account)' })
+  @ApiResponse({ status: 200, description: 'User rejected and deleted' })
+  async rejectUser(@CurrentUser('id') adminId: string, @Param('id') userId: string) {
+    return this.adminService.rejectUser(adminId, userId);
   }
 
   // System settings (Super Admin only)
