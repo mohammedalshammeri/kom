@@ -39,8 +39,12 @@ export class MediaService {
       throw new ForbiddenException('You can only upload media to your own listings');
     }
 
-    if (listing.status !== ListingStatus.DRAFT && listing.status !== ListingStatus.REJECTED) {
-      throw new BadRequestException('Can only upload media to draft or rejected listings');
+    if (
+      listing.status !== ListingStatus.DRAFT &&
+      listing.status !== ListingStatus.REJECTED &&
+      listing.status !== ListingStatus.APPROVED
+    ) {
+      throw new BadRequestException('Can only upload media to draft, rejected, or approved listings');
     }
 
     if (!file || !file.buffer) {
@@ -145,8 +149,12 @@ export class MediaService {
       throw new ForbiddenException('You can only upload media to your own listings');
     }
 
-    if (listing.status !== ListingStatus.DRAFT && listing.status !== ListingStatus.REJECTED) {
-      throw new BadRequestException('Can only upload media to draft or rejected listings');
+    if (
+      listing.status !== ListingStatus.DRAFT &&
+      listing.status !== ListingStatus.REJECTED &&
+      listing.status !== ListingStatus.APPROVED
+    ) {
+      throw new BadRequestException('Can only upload media to draft, rejected, or approved listings');
     }
 
     // Validate content type
@@ -257,9 +265,10 @@ export class MediaService {
 
     if (
       media.listing.status !== ListingStatus.DRAFT &&
-      media.listing.status !== ListingStatus.REJECTED
+      media.listing.status !== ListingStatus.REJECTED &&
+      media.listing.status !== ListingStatus.APPROVED
     ) {
-      throw new BadRequestException('Can only delete media from draft or rejected listings');
+      throw new BadRequestException('Can only delete media from draft, rejected, or approved listings');
     }
 
     // Delete from S3

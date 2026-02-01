@@ -165,6 +165,15 @@ export class ListingsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post(':id/save-draft')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Save listing as draft' })
+  @ApiResponse({ status: 200, description: 'Listing saved as draft' })
+  async saveAsDraft(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.listingsService.saveAsDraft(userId, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Delete (archive) listing' })

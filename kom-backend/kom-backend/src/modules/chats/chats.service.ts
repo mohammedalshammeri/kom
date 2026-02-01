@@ -2,10 +2,15 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaginatedResponse } from '../../common/dto';
 import { ChatMessagesQueryDto, SendMessageDto, StartChatDto } from './dto/chat.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class ChatsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private getDisplayName(user: any): string {
     return (
@@ -196,6 +201,9 @@ export class ChatsService {
   async sendMessage(userId: string, threadId: string, dto: SendMessageDto) {
     const thread = await this.prisma.chatThread.findUnique({
       where: { id: threadId },
+      include: {
+        listing: { select: { id: true, title: true } },
+      },
     });
 
     if (!thread) {
@@ -222,6 +230,31 @@ export class ChatsService {
         lastMessageSenderId: userId,
       },
     });
+
+    const otherUserId = thread.userAId === userId ? thread.userBId : thread.userAId;
+    const sender = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        individualProfile: { select: { fullName: true } },
+        showroomProfile: { select: { showroomName: true } },
+      },
+    });
+
+    const senderName = this.getDisplayName(sender);
+    const listingTitle = thread.listing?.title || 'إعلان';
+
+    await this.notificationsService.createNotification(
+      otherUserId,
+      NotificationType.SYSTEM,
+      'رسالة جديدة',
+      `رسالة جديدة من ${senderName} بخصوص ${listingTitle}`,
+      {
+        threadId: thread.id,
+        listingId: thread.listing?.id,
+      },
+      true,
+    );
 
     return message;
   }

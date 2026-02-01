@@ -84,9 +84,13 @@ export class ListingsService {
       throw new ForbiddenException('You can only edit your own listings');
     }
 
-    // Can only edit DRAFT or REJECTED listings
-    if (listing.status !== ListingStatus.DRAFT && listing.status !== ListingStatus.REJECTED) {
-      throw new BadRequestException('Can only edit draft or rejected listings');
+    // Can only edit DRAFT, REJECTED, or APPROVED listings
+    if (
+      listing.status !== ListingStatus.DRAFT &&
+      listing.status !== ListingStatus.REJECTED &&
+      listing.status !== ListingStatus.APPROVED
+    ) {
+      throw new BadRequestException('Can only edit draft, rejected, or approved listings');
     }
 
     const updated = await this.prisma.listing.update({
@@ -101,7 +105,14 @@ export class ListingsService {
         // Reset rejection if editing a rejected listing
         rejectionReason: listing.status === ListingStatus.REJECTED ? null : undefined,
         rejectedAt: listing.status === ListingStatus.REJECTED ? null : undefined,
-        status: listing.status === ListingStatus.REJECTED ? ListingStatus.DRAFT : undefined,
+        status:
+          listing.status === ListingStatus.REJECTED
+            ? ListingStatus.DRAFT
+            : listing.status === ListingStatus.APPROVED
+              ? ListingStatus.DRAFT
+              : undefined,
+        approvedAt: listing.status === ListingStatus.APPROVED ? null : undefined,
+        postedAt: listing.status === ListingStatus.APPROVED ? null : undefined,
       },
       include: {
         media: { orderBy: { sortOrder: 'asc' } },
@@ -331,6 +342,47 @@ export class ListingsService {
     return updated;
   }
 
+  async saveAsDraft(userId: string, listingId: string) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
+    if (listing.ownerId !== userId) {
+      throw new ForbiddenException('You can only update your own listings');
+    }
+
+    if (listing.status === ListingStatus.SOLD || listing.status === ListingStatus.ARCHIVED) {
+      throw new BadRequestException('Listing cannot be saved as draft in current status');
+    }
+
+    if (listing.status === ListingStatus.DRAFT) {
+      return listing;
+    }
+
+    const updated = await this.prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        status: ListingStatus.DRAFT,
+        approvedAt: null,
+        rejectedAt: null,
+        rejectionReason: null,
+        postedAt: null,
+      },
+      include: {
+        media: { orderBy: { sortOrder: 'asc' } },
+        carDetails: true,
+        plateDetails: true,
+        partDetails: true,
+      },
+    });
+
+    return updated;
+  }
+
   async deleteListing(userId: string, listingId: string) {
     const listing = await this.prisma.listing.findUnique({
       where: { id: listingId },
@@ -496,6 +548,8 @@ export class ListingsService {
             id: true,
             role: true,
             createdAt: true,
+            email: true,
+            phone: true,
             individualProfile: {
               select: { fullName: true, governorate: true, city: true },
             },
@@ -620,8 +674,12 @@ export class ListingsService {
       throw new BadRequestException(`This listing is not a ${expectedType} listing`);
     }
 
-    if (listing.status !== ListingStatus.DRAFT && listing.status !== ListingStatus.REJECTED) {
-      throw new BadRequestException('Can only edit draft or rejected listings');
+    if (
+      listing.status !== ListingStatus.DRAFT &&
+      listing.status !== ListingStatus.REJECTED &&
+      listing.status !== ListingStatus.APPROVED
+    ) {
+      throw new BadRequestException('Can only edit draft, rejected, or approved listings');
     }
 
     return listing;

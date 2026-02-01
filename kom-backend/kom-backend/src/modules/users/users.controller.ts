@@ -36,7 +36,7 @@ export class UsersController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+      limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
     }),
   )
   @ApiConsumes('multipart/form-data')
