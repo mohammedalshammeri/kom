@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { UserRole } from '@prisma/client';
-import { PendingListingsQueryDto, RejectListingDto } from './dto';
+import { PendingListingsQueryDto, RejectListingDto, AcceptedListingsQueryDto } from './dto';
 
 @ApiTags('Moderation')
 @Controller('admin/moderation')
@@ -20,6 +20,13 @@ export class ModerationController {
   @ApiResponse({ status: 200, description: 'List of pending listings' })
   async getPendingListings(@Query() query: PendingListingsQueryDto) {
     return this.moderationService.getPendingListings(query);
+  }
+
+  @Get('listings/accepted')
+  @ApiOperation({ summary: 'Get accepted listings (active & expired)' })
+  @ApiResponse({ status: 200, description: 'List of accepted listings' })
+  async getAcceptedListings(@Query() query: AcceptedListingsQueryDto) {
+    return this.moderationService.getAcceptedListings(query);
   }
 
   @Get('listings/:id')
@@ -45,6 +52,13 @@ export class ModerationController {
     @Body() dto: RejectListingDto,
   ) {
     return this.moderationService.rejectListing(id, adminId, dto);
+  }
+
+  @Post('listings/:id/reactivate')
+  @ApiOperation({ summary: 'Reactivate an expired listing' })
+  @ApiResponse({ status: 200, description: 'Listing reactivated' })
+  async reactivateListing(@Param('id') id: string, @CurrentUser('id') adminId: string) {
+    return this.moderationService.reactivateListing(id, adminId);
   }
 
   @Get('stats')

@@ -4,12 +4,14 @@ import { PaginatedResponse } from '../../common/dto';
 import { ChatMessagesQueryDto, SendMessageDto, StartChatDto } from './dto/chat.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '@prisma/client';
+import { ChatsGateway } from './chats.gateway';
 
 @Injectable()
 export class ChatsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly chatsGateway: ChatsGateway,
   ) {}
 
   private getDisplayName(user: any): string {
@@ -195,7 +197,37 @@ export class ChatsService {
       data: { isRead: true },
     });
 
+    // Notify the room that messages have been read
+    this.chatsGateway.sendMessagesReadToRoom(threadId);
+
     return new PaginatedResponse(messages, total, page, limit);
+  }
+
+  async markMessagesAsRead(userId: string, threadId: string) {
+    const thread = await this.prisma.chatThread.findUnique({
+      where: { id: threadId },
+    });
+
+    if (!thread) {
+      throw new NotFoundException('Chat not found');
+    }
+
+    if (thread.userAId !== userId && thread.userBId !== userId) {
+      throw new BadRequestException('Not a participant in this chat');
+    }
+
+    await this.prisma.chatMessage.updateMany({
+      where: {
+        threadId,
+        senderId: { not: userId },
+        isRead: false,
+      },
+      data: { isRead: true },
+    });
+
+    this.chatsGateway.sendMessagesReadToRoom(threadId);
+    
+    return { success: true };
   }
 
   async sendMessage(userId: string, threadId: string, dto: SendMessageDto) {
@@ -230,6 +262,9 @@ export class ChatsService {
         lastMessageSenderId: userId,
       },
     });
+
+    // Emit real-time event
+    this.chatsGateway.sendMessageToRoom(threadId, message);
 
     const otherUserId = thread.userAId === userId ? thread.userBId : thread.userAId;
     const sender = await this.prisma.user.findUnique({

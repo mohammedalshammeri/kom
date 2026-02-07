@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { PlateType } from '@prisma/client';
 
 export class PlateDetailsDto {
   @ApiProperty({ example: '123456' })
@@ -16,4 +17,9 @@ export class PlateDetailsDto {
   @IsOptional()
   @IsString()
   plateCode?: string;
+
+  @ApiPropertyOptional({ enum: PlateType })
+  @IsOptional()
+  @IsEnum(PlateType)
+  plateType?: PlateType;
 }

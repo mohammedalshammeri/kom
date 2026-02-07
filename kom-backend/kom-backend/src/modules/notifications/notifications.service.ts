@@ -194,6 +194,30 @@ export class NotificationsService {
     );
   }
 
+  async notifyStoryApproved(userId: string, storyId: string) {
+    return this.createNotification(
+      userId,
+      NotificationType.STORY_APPROVED,
+      'Story Approved',
+      'Your story has been approved and is now live.',
+      { storyId },
+    );
+  }
+
+  async notifyStoryRejected(
+    userId: string,
+    storyId: string,
+    reason?: string,
+  ) {
+    return this.createNotification(
+      userId,
+      NotificationType.STORY_REJECTED,
+      'Story Rejected',
+      `Your story has been rejected.${reason ? ' Reason: ' + reason : ''}`,
+      { storyId, reason },
+    );
+  }
+
   async sendSystemNotification(userId: string, title: string, body: string) {
     return this.createNotification(userId, NotificationType.SYSTEM, title, body, {});
   }

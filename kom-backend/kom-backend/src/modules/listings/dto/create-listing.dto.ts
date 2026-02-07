@@ -8,9 +8,11 @@ import {
   MinLength,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ListingType, Currency, ContactPreference } from '@prisma/client';
+import { CreateMotorcycleDetailsDto } from './create-motorcycle-details.dto';
 
 export class CreateListingDto {
   @ApiProperty({ enum: ListingType, example: ListingType.CAR })
@@ -55,6 +57,12 @@ export class CreateListingDto {
   @IsOptional()
   @IsEnum(ContactPreference)
   contactPreference?: ContactPreference;
+
+  @ApiPropertyOptional({ type: CreateMotorcycleDetailsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateMotorcycleDetailsDto)
+  motorcycleDetails?: CreateMotorcycleDetailsDto;
 }
 
 export class UpdateListingDto {

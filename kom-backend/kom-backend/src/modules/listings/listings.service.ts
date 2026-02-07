@@ -22,8 +22,10 @@ import {
   CarDetailsDto,
   PlateDetailsDto,
   PartDetailsDto,
+  CreateMotorcycleDetailsDto,
 } from './dto';
 import { PaginatedResponse } from '../../common/dto';
+
 
 @Injectable()
 export class ListingsService {
@@ -63,6 +65,7 @@ export class ListingsService {
       include: {
         media: true,
         carDetails: true,
+        motorcycleDetails: true,
         plateDetails: true,
         partDetails: true,
       },
@@ -117,6 +120,7 @@ export class ListingsService {
       include: {
         media: { orderBy: { sortOrder: 'asc' } },
         carDetails: true,
+        motorcycleDetails: true,
         plateDetails: true,
         partDetails: true,
       },
@@ -166,6 +170,35 @@ export class ListingsService {
     return carDetails;
   }
 
+  async upsertMotorcycleDetails(userId: string, listingId: string, dto: CreateMotorcycleDetailsDto) {
+    const _listing = await this.validateListingOwnership(userId, listingId, ListingType.MOTORCYCLE);
+
+    const motorcycleDetails = await this.prisma.motorcycleDetails.upsert({
+      where: { listingId },
+      create: {
+        listingId,
+        make: dto.make,
+        model: dto.model,
+        year: dto.year,
+        mileageKm: dto.mileageKm,
+        transmission: dto.transmission,
+        condition: dto.condition,
+        color: dto.color,
+      },
+      update: {
+        make: dto.make,
+        model: dto.model,
+        year: dto.year,
+        mileageKm: dto.mileageKm,
+        transmission: dto.transmission,
+        condition: dto.condition,
+        color: dto.color,
+      },
+    });
+
+    return motorcycleDetails;
+  }
+
   async upsertPlateDetails(userId: string, listingId: string, dto: PlateDetailsDto) {
     const _listing = await this.validateListingOwnership(userId, listingId, ListingType.PLATE);
 
@@ -176,11 +209,13 @@ export class ListingsService {
         plateNumber: dto.plateNumber,
         plateCategory: dto.plateCategory,
         plateCode: dto.plateCode,
+        plateType: dto.plateType,
       },
       update: {
         plateNumber: dto.plateNumber,
         plateCategory: dto.plateCategory,
         plateCode: dto.plateCode,
+        plateType: dto.plateType,
       },
     });
 
@@ -226,6 +261,7 @@ export class ListingsService {
       include: {
         media: true,
         carDetails: true,
+        motorcycleDetails: true,
         plateDetails: true,
         partDetails: true,
         paymentTransactions: {
@@ -289,6 +325,14 @@ export class ListingsService {
           errors.push('Listing fee payment is required');
         }
       }
+    } else if (listing.type === ListingType.MOTORCYCLE) {
+      if (!listing.motorcycleDetails) {
+        errors.push('Motorcycle details are required');
+      } else {
+        if (!listing.motorcycleDetails.make) errors.push('Motorcycle make is required');
+        if (!listing.motorcycleDetails.model) errors.push('Motorcycle model is required');
+        if (!listing.motorcycleDetails.year) errors.push('Motorcycle year is required');
+      }
     } else if (listing.type === ListingType.PLATE) {
       if (!listing.plateDetails) {
         errors.push('Plate details are required');
@@ -316,20 +360,21 @@ export class ListingsService {
       where: { id: listingId },
       data: {
         status: ListingStatus.PENDING_REVIEW,
-        postedAt: new Date(),
       },
       include: {
         media: { orderBy: { sortOrder: 'asc' } },
         carDetails: true,
+        motorcycleDetails: true,
         plateDetails: true,
         partDetails: true,
       },
     });
 
+    // Notify admins
     await this.notificationsService.notifyAdmins(
       NotificationType.SYSTEM,
-      'إعلان جديد بانتظار المراجعة',
-      `تم إرسال إعلان جديد للمراجعة: ${updated.title}`,
+      'إعلان جديد بانتظار الموافقة',
+      `تم تقديم إعلان جديد للمراجعة: ${updated.title}`,
       {
         listingId: updated.id,
         title: updated.title,
@@ -434,55 +479,77 @@ export class ListingsService {
     const { page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ListingWhereInput = {
+    // 1. Build Base Filters (Everything EXCEPT Search Text)
+    const baseWhere: Prisma.ListingWhereInput = {
       status: ListingStatus.APPROVED,
     };
 
-    // Apply filters
     if (query.type) {
-      where.type = query.type;
+      baseWhere.type = query.type;
     }
 
     if (query.governorate) {
-      where.locationGovernorate = query.governorate;
+      baseWhere.locationGovernorate = query.governorate;
     }
 
     if (query.priceMin !== undefined || query.priceMax !== undefined) {
-      where.price = {};
+      baseWhere.price = {};
       if (query.priceMin !== undefined) {
-        where.price.gte = query.priceMin;
+        baseWhere.price.gte = query.priceMin;
       }
       if (query.priceMax !== undefined) {
-        where.price.lte = query.priceMax;
+        baseWhere.price.lte = query.priceMax;
       }
     }
 
-    if (query.search) {
-      where.OR = [
-        { title: { contains: query.search, mode: 'insensitive' } },
-        { description: { contains: query.search, mode: 'insensitive' } },
-      ];
-    }
-
-    // Car-specific filters
+    // Car-specific filters (Applied to baseWhere)
     if (
       query.type === ListingType.CAR &&
-      (query.make || query.model || query.yearMin || query.yearMax)
+      (query.make || query.model || query.yearMin || query.yearMax || query.color)
     ) {
-      where.carDetails = {};
+      baseWhere.carDetails = {};
       if (query.make) {
-        where.carDetails.make = { contains: query.make, mode: 'insensitive' };
+        baseWhere.carDetails.make = { startsWith: query.make, mode: 'insensitive' };
       }
       if (query.model) {
-        where.carDetails.model = { contains: query.model, mode: 'insensitive' };
+        baseWhere.carDetails.model = { startsWith: query.model, mode: 'insensitive' };
+      }
+      if (query.color) {
+        baseWhere.carDetails.color = { equals: query.color, mode: 'insensitive' };
       }
       if (query.yearMin !== undefined || query.yearMax !== undefined) {
-        where.carDetails.year = {};
+        baseWhere.carDetails.year = {};
         if (query.yearMin !== undefined) {
-          where.carDetails.year.gte = query.yearMin;
+          baseWhere.carDetails.year.gte = query.yearMin;
         }
         if (query.yearMax !== undefined) {
-          where.carDetails.year.lte = query.yearMax;
+          baseWhere.carDetails.year.lte = query.yearMax;
+        }
+      }
+    }
+
+    // Motorcycle-specific filters (Applied to baseWhere)
+    if (
+      query.type === ListingType.MOTORCYCLE &&
+      (query.make || query.model || query.yearMin || query.yearMax || query.color)
+    ) {
+      baseWhere.motorcycleDetails = {};
+      if (query.make) {
+        baseWhere.motorcycleDetails.make = { startsWith: query.make, mode: 'insensitive' };
+      }
+      if (query.model) {
+        baseWhere.motorcycleDetails.model = { startsWith: query.model, mode: 'insensitive' };
+      }
+      if (query.color) {
+        baseWhere.motorcycleDetails.color = { equals: query.color, mode: 'insensitive' };
+      }
+      if (query.yearMin !== undefined || query.yearMax !== undefined) {
+        baseWhere.motorcycleDetails.year = {};
+        if (query.yearMin !== undefined) {
+          baseWhere.motorcycleDetails.year.gte = query.yearMin;
+        }
+        if (query.yearMax !== undefined) {
+          baseWhere.motorcycleDetails.year.lte = query.yearMax;
         }
       }
     }
@@ -505,32 +572,106 @@ export class ListingsService {
         break;
     }
 
-    const [listings, total] = await Promise.all([
-      this.prisma.listing.findMany({
-        where,
-        include: {
-          media: {
-            orderBy: { sortOrder: 'asc' },
-            take: 1, // Only first image for list view
-          },
-          carDetails: true,
-          plateDetails: true,
-          partDetails: true,
-          owner: {
-            select: {
-              id: true,
-              role: true,
-              individualProfile: { select: { fullName: true } },
-              showroomProfile: { select: { showroomName: true, logoUrl: true } },
-            },
-          },
+    const include = {
+      media: {
+        orderBy: { sortOrder: 'asc' },
+        take: 1,
+      },
+      carDetails: true,
+      plateDetails: true,
+      partDetails: true,
+      owner: {
+        select: {
+          id: true,
+          role: true,
+          individualProfile: { select: { fullName: true } },
+          showroomProfile: { select: { showroomName: true, logoUrl: true } },
         },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.listing.count({ where }),
-    ]);
+      },
+    } as any;
+
+    let listings: any[] = [];
+    let total = 0;
+
+    // 2. Handle Search Query Logic
+    if (query.search) {
+      const term = query.search.trim();
+      const searchTerms = term.split(/\s+/);
+      const isMultiWord = searchTerms.length > 1;
+
+      if (!isMultiWord) {
+        // --- SINGLE WORD: SEARCH ONLY BRAND (MAKE) ---
+        // Per user request: Restrict single-word search strictly to the Brand (Make).
+        // This avoids irrelevant matches like "Ford Taurus" appearing for "T".
+        
+        const localWhere: Prisma.ListingWhereInput = {
+             ...baseWhere,
+             OR: [
+                { carDetails: { make: { startsWith: term, mode: 'insensitive' } } },
+                { motorcycleDetails: { make: { startsWith: term, mode: 'insensitive' } } },
+             ]
+        };
+
+        [listings, total] = await Promise.all([
+          this.prisma.listing.findMany({
+            where: localWhere,
+            include,
+            orderBy,
+            skip,
+            take: limit,
+          }),
+          this.prisma.listing.count({ where: localWhere }),
+        ]);
+
+      } else {
+        // --- MULTI WORD SEARCH (Existing Logic) ---
+        const makePart = searchTerms[0];
+        const modelPart = searchTerms.slice(1).join(' ');
+
+        const mwWhere: Prisma.ListingWhereInput = {
+          ...baseWhere,
+          OR: [
+            { title: { contains: term, mode: 'insensitive' } },
+            {
+              AND: [
+                { carDetails: { make: { startsWith: makePart, mode: 'insensitive' } } },
+                { carDetails: { model: { startsWith: modelPart, mode: 'insensitive' } } },
+              ],
+            },
+            {
+              AND: [
+                { motorcycleDetails: { make: { startsWith: makePart, mode: 'insensitive' } } },
+                { motorcycleDetails: { model: { startsWith: modelPart, mode: 'insensitive' } } },
+              ],
+            },
+          ],
+        };
+
+        [listings, total] = await Promise.all([
+          this.prisma.listing.findMany({
+            where: mwWhere,
+            include,
+            orderBy,
+            skip,
+            take: limit,
+          }),
+          this.prisma.listing.count({ where: mwWhere }),
+        ]);
+      }
+
+    } else {
+      // --- NO SEARCH ---
+      [listings, total] = await Promise.all([
+        this.prisma.listing.findMany({
+          where: baseWhere,
+          include,
+          orderBy,
+          skip,
+          take: limit,
+        }),
+        this.prisma.listing.count({ where: baseWhere }),
+      ]);
+    }
 
     return new PaginatedResponse(listings, total, page, limit);
   }

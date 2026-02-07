@@ -4,6 +4,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
+import { ScheduleModule } from '@nestjs/schedule';
+
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -16,6 +18,9 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { HealthModule } from './modules/health/health.module';
 import { ChatsModule } from './modules/chats/chats.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { StoriesModule } from './modules/stories/stories.module';
+import { AdminVideosModule } from './modules/admin-videos/admin-videos.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -48,6 +53,9 @@ import configuration from './config/configuration';
     // Database
     PrismaModule,
 
+    // Scheduling
+    ScheduleModule.forRoot(),
+
     // Feature modules
     AuthModule,
     UsersModule,
@@ -60,6 +68,9 @@ import configuration from './config/configuration';
     ChatsModule,
     AdminModule,
     HealthModule,
+    TasksModule,
+    StoriesModule,
+    AdminVideosModule,
   ],
   providers: [
     {

@@ -23,6 +23,13 @@ enum ListingType {
   CAR
   PLATE
   PART
+  MOTORCYCLE
+}
+
+enum PlateType {
+  PRIVATE
+  TRANSPORT
+  MOTORCYCLE
 }
 
 enum ListingStatus {
@@ -32,6 +39,7 @@ enum ListingStatus {
   REJECTED
   ARCHIVED
   SOLD
+  EXPIRED
 }
 
 enum Currency {
@@ -92,6 +100,8 @@ enum NotificationType {
   PAYMENT_RECEIVED
   ACCOUNT_BANNED
   ACCOUNT_UNBANNED
+  STORY_APPROVED
+  STORY_REJECTED
   SYSTEM
 }
 
@@ -105,6 +115,25 @@ enum ReportStatus {
 enum ReportType {
   LISTING
   COMPLAINT
+}
+
+enum MerchantType {
+  CAR_SHOWROOM
+  GARAGE
+  OTHER
+}
+
+enum StoryStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  EXPIRED
+}
+
+enum CommentStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // ==================== MODELS ====================
@@ -129,6 +158,9 @@ model User {
   individualProfile IndividualProfile?
   showroomProfile   ShowroomProfile?
   listings          Listing[]
+  stories           Story[]
+  storyLikes        StoryLike[]
+  storyComments     StoryComment[]
   notifications     Notification[]
   reports           Report[]           @relation("ReporterReports")
   adminPermission   AdminPermission?
@@ -166,6 +198,7 @@ model ShowroomProfile {
   userId        String   @unique
   showroomName  String
   crNumber      String?  // Commercial Registration Number
+  merchantType  MerchantType? @default(CAR_SHOWROOM)
   description   String?
   governorate   String?
   city          String?
@@ -210,6 +243,7 @@ model Listing {
   favoritesCount       Int               @default(0)
   postedAt             DateTime?
   approvedAt           DateTime?
+  expiresAt            DateTime?
   rejectedAt           DateTime?
   rejectionReason      String?
   createdAt            DateTime          @default(now())
@@ -218,6 +252,7 @@ model Listing {
   // Relations
   owner               User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   carDetails          CarDetails?
+  motorcycleDetails   MotorcycleDetails?
   plateDetails        PlateDetails?
   partDetails         PartDetails?
   media               Media[]
@@ -300,11 +335,34 @@ model CarDetails {
   @@index([make, model])
 }
 
+model MotorcycleDetails {
+  id           String       @id @default(uuid())
+  listingId    String       @unique
+  make         String
+  model        String
+  year         Int
+  mileageKm    Int?
+  transmission Transmission
+  condition    CarCondition
+  color        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([make])
+  @@index([model])
+  @@index([year])
+  @@index([make, model])
+}
+
 model PlateDetails {
   id            String   @id @default(uuid())
   listingId     String   @unique
   plateNumber   String
   plateCategory String   // e.g., "Private", "Special", "VIP"
+  plateType     PlateType?
   plateCode     String?  // Letter code
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -508,6 +566,81 @@ model Favorite {
   @@unique([userId, listingId])
   @@index([userId])
   @@index([listingId])
+  @@index([createdAt])
+}
+
+model Story {
+  id              String      @id @default(uuid())
+  userId          String
+  mediaUrl        String
+  mediaType       MediaType
+  duration        Int?        // in seconds
+  status          StoryStatus @default(PENDING)
+  viewsCount      Int         @default(0)
+  postedAt        DateTime?
+  expiresAt       DateTime?
+  rejectionReason String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  likesCount      Int         @default(0)
+  commentsCount   Int         @default(0)
+
+  // Relations
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes     StoryLike[]
+  comments  StoryComment[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model StoryLike {
+  id        String   @id @default(uuid())
+  storyId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, userId])
+  @@index([storyId])
+  @@index([userId])
+}
+
+model StoryComment {
+  id        String   @id @default(uuid())
+  storyId   String
+  userId    String
+  text      String
+  status    CommentStatus @default(APPROVED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([storyId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+
+model AdminVideo {
+  id           String   @id @default(uuid())
+  title        String?
+  videoUrl     String
+  thumbnailUrl String?
+  description  String?
+  viewsCount   Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
   @@index([createdAt])
 }
 

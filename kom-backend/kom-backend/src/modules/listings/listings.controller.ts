@@ -20,6 +20,7 @@ import {
   CarDetailsDto,
   PlateDetailsDto,
   PartDetailsDto,
+  CreateMotorcycleDetailsDto,
 } from './dto';
 
 @ApiTags('Listings')
@@ -126,6 +127,19 @@ export class ListingsController {
     @Body() dto: CarDetailsDto,
   ) {
     return this.listingsService.upsertCarDetails(userId, id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/details/motorcycle')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Add/Update motorcycle details' })
+  @ApiResponse({ status: 200, description: 'Motorcycle details saved' })
+  async upsertMotorcycleDetails(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: CreateMotorcycleDetailsDto,
+  ) {
+    return this.listingsService.upsertMotorcycleDetails(userId, id, dto);
   }
 
   @UseGuards(JwtAuthGuard)

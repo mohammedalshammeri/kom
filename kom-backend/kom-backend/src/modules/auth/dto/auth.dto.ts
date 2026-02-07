@@ -15,6 +15,12 @@ export enum UserType {
   SHOWROOM = 'SHOWROOM',
 }
 
+export enum MerchantType {
+  CAR_SHOWROOM = 'CAR_SHOWROOM',
+  GARAGE = 'GARAGE',
+  OTHER = 'OTHER',
+}
+
 export class RegisterDto {
   @ApiProperty({ example: 'user@example.com' })
   @IsEmail()
@@ -54,6 +60,11 @@ export class RegisterDto {
   @MinLength(2)
   @MaxLength(100)
   showroomName?: string;
+
+  @ApiPropertyOptional({ enum: MerchantType, example: MerchantType.CAR_SHOWROOM })
+  @IsEnum(MerchantType)
+  @IsOptional()
+  merchantType?: MerchantType;
 
   @ApiPropertyOptional({
     example: 'CR123456',

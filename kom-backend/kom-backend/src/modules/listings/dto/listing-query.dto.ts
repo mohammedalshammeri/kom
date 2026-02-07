@@ -54,6 +54,11 @@ export class ListingQueryDto extends PaginationDto {
   @IsNumber()
   priceMax?: number;
 
+  @ApiPropertyOptional({ example: 'Red' })
+  @IsOptional()
+  @IsString()
+  color?: string;
+
   @ApiPropertyOptional({ example: 'Capital' })
   @IsOptional()
   @IsString()

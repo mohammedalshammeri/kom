@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ListingStatus, Prisma } from '@prisma/client';
 import { PaginatedResponse } from '../../common/dto';
-import { PendingListingsQueryDto, RejectListingDto } from './dto';
+import { PendingListingsQueryDto, RejectListingDto, AcceptedListingsQueryDto } from './dto';
 
 @Injectable()
 export class ModerationService {
@@ -62,6 +62,57 @@ export class ModerationService {
           },
         },
         orderBy: { postedAt: 'asc' }, // Oldest first for FIFO
+        skip,
+        take: limit,
+      }),
+      this.prisma.listing.count({ where }),
+    ]);
+
+    return new PaginatedResponse(listings, total, page, limit);
+  }
+
+  async getAcceptedListings(query: AcceptedListingsQueryDto) {
+    const { page = 1, limit = 20 } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ListingWhereInput = {
+      status: { in: [ListingStatus.APPROVED, ListingStatus.EXPIRED] },
+    };
+
+    if (query.type) {
+      where.type = query.type;
+    }
+
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { id: { contains: query.search } },
+      ];
+    }
+
+    const [listings, total] = await Promise.all([
+      this.prisma.listing.findMany({
+        where,
+        include: {
+          media: { orderBy: { sortOrder: 'asc' }, take: 1 },
+          carDetails: true,
+          plateDetails: true,
+          partDetails: true,
+          owner: {
+            select: {
+              id: true,
+              email: true,
+              phone: true,
+              role: true,
+              isActive: true,
+              isBanned: true,
+              createdAt: true,
+              individualProfile: { select: { fullName: true } },
+              showroomProfile: { select: { showroomName: true } },
+            },
+          },
+        },
+        orderBy: {  postedAt: 'desc' }, // Newest first
         skip,
         take: limit,
       }),
@@ -140,12 +191,16 @@ export class ModerationService {
     // Get before state for audit log
     const beforeState = { status: listing.status };
 
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
+
     // Approve listing
     const updated = await this.prisma.listing.update({
       where: { id: listingId },
       data: {
         status: ListingStatus.APPROVED,
         approvedAt: new Date(),
+        expiresAt: expiresAt,
         rejectedAt: null,
         rejectionReason: null,
       },
@@ -218,6 +273,42 @@ export class ModerationService {
       listing.title,
       dto.reason,
     );
+
+    return updated;
+  }
+
+  async reactivateListing(listingId: string, adminId: string) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // Reset for another 30 days
+
+    // Reactivate listing
+    const updated = await this.prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        status: ListingStatus.APPROVED,
+        expiresAt: expiresAt,
+      },
+    });
+
+    // Create audit log
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: adminId,
+        action: 'LISTING_REACTIVATED',
+        entityType: 'Listing',
+        entityId: listingId,
+        before: { status: listing.status, expiresAt: listing.expiresAt },
+        after: { status: ListingStatus.APPROVED, expiresAt: expiresAt },
+      },
+    });
 
     return updated;
   }

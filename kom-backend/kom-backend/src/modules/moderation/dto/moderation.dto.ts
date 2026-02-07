@@ -25,6 +25,18 @@ export class PendingListingsQueryDto extends PaginationDto {
   dateTo?: string;
 }
 
+export class AcceptedListingsQueryDto extends PaginationDto {
+  @ApiPropertyOptional({ enum: ListingType })
+  @IsOptional()
+  @IsEnum(ListingType)
+  type?: ListingType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
+
 export class RejectListingDto {
   @ApiProperty({
     example: 'Images are unclear or insufficient',
