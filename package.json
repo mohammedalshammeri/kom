@@ -1,6 +1,10 @@
 {
   "dependencies": {
+    "@expo-google-fonts/cairo": "^0.4.2",
     "@nestjs/schedule": "^6.1.0",
     "lucide-react": "^0.563.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2"
   }
 }

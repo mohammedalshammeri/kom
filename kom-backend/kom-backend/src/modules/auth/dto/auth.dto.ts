@@ -17,6 +17,9 @@ export enum UserType {
 
 export enum MerchantType {
   CAR_SHOWROOM = 'CAR_SHOWROOM',
+  SPARE_PARTS = 'SPARE_PARTS',
+  PLATES = 'PLATES',
+  MOTORCYCLES = 'MOTORCYCLES',
   GARAGE = 'GARAGE',
   OTHER = 'OTHER',
 }

@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ListingStatus, Prisma } from '@prisma/client';
+import { PackagesService } from '../packages/packages.service';
+import { ListingStatus, Prisma, UserRole } from '@prisma/client';
 import { PaginatedResponse } from '../../common/dto';
 import { PendingListingsQueryDto, RejectListingDto, AcceptedListingsQueryDto } from './dto';
 
@@ -10,6 +11,7 @@ export class ModerationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly packagesService: PackagesService,
   ) {}
 
   async getPendingListings(query: PendingListingsQueryDto) {
@@ -224,6 +226,12 @@ export class ModerationService {
       listing.id,
       listing.title,
     );
+
+    // If owner is a showroom merchant, increment their subscription listings used counter
+    const owner = await this.prisma.user.findUnique({ where: { id: listing.ownerId }, select: { role: true } });
+    if (owner?.role === UserRole.USER_SHOWROOM) {
+      await this.packagesService.incrementListingsUsed(listing.ownerId);
+    }
 
     return updated;
   }

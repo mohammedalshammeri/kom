@@ -8,14 +8,18 @@ import {
   Param,
   Query,
   UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { PushService } from './push.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../../common/decorators';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { CurrentUser, Roles } from '../../common/decorators';
 import { PaginationDto } from '../../common/dto';
 import { RegisterDeviceDto } from './dto';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Notifications')
 @Controller('notifications')
@@ -60,6 +64,33 @@ export class NotificationsController {
   @ApiResponse({ status: 200, description: 'Notification deleted' })
   async deleteNotification(@CurrentUser('id') userId: string, @Param('id') notificationId: string) {
     return this.notificationsService.deleteNotification(userId, notificationId);
+  }
+
+  // ── Admin: broadcast ───────────────────────────────────────────────────────
+
+  @Post('admin/broadcast')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send broadcast notification to all users (admin)' })
+  async broadcast(
+    @CurrentUser('id') adminId: string,
+    @Body() body: { title: string; body: string; targetType?: 'ALL' | 'REGISTERED' },
+  ) {
+    return this.notificationsService.broadcastToAll(
+      body.title,
+      body.body,
+      body.targetType ?? 'ALL',
+      adminId,
+    );
+  }
+
+  @Get('admin/broadcast/history')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get broadcast notification history (admin)' })
+  async broadcastHistory() {
+    return this.notificationsService.getBroadcastHistory();
   }
 
   // Device token management

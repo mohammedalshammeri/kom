@@ -55,4 +55,9 @@ export class PartDetailsDto {
   @IsOptional()
   @IsString()
   brand?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @Type(() => Boolean)
+  deliveryAvailable?: boolean;
 }

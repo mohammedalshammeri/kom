@@ -40,4 +40,14 @@ export class CreateMotorcycleDetailsDto {
   @IsOptional()
   @IsString()
   color?: string;
+
+  @ApiPropertyOptional({ example: '600cc' })
+  @IsOptional()
+  @IsString()
+  engineSize?: string;
+
+  @ApiPropertyOptional({ example: 'Sport' })
+  @IsOptional()
+  @IsString()
+  bodyType?: string;
 }

@@ -88,20 +88,36 @@ enum StorageProvider {
 
 enum PaymentStatus {
   PENDING
+  PENDING_PROOF
   PAID
   FAILED
   REFUNDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
 }
 
 enum NotificationType {
   LISTING_APPROVED
   LISTING_REJECTED
   LISTING_SUBMITTED
+  LISTING_EXPIRY_WARNING
+  LISTING_FEATURED
   PAYMENT_RECEIVED
+  PAYMENT_PROOF_SUBMITTED
+  PAYMENT_APPROVED
+  PAYMENT_REJECTED
+  SUBSCRIPTION_EXPIRY_WARNING
+  SUBSCRIPTION_EXPIRED
   ACCOUNT_BANNED
   ACCOUNT_UNBANNED
   STORY_APPROVED
   STORY_REJECTED
+  NEW_MESSAGE
+  BROADCAST
   SYSTEM
 }
 
@@ -119,6 +135,9 @@ enum ReportType {
 
 enum MerchantType {
   CAR_SHOWROOM
+  SPARE_PARTS
+  PLATES
+  MOTORCYCLES
   GARAGE
   OTHER
 }
@@ -171,6 +190,11 @@ model User {
   chatThreadsA      ChatThread[]       @relation("ChatUserA")
   chatThreadsB      ChatThread[]       @relation("ChatUserB")
   chatMessages      ChatMessage[]      @relation("ChatMessageSender")
+  paymentTransactions PaymentTransaction[]
+
+  // Subscriptions (for showroom merchants)
+  subscription      Subscription?
+  broadcastLogs     BroadcastLog[]
 
   @@index([email])
   @@index([phone])
@@ -241,6 +265,8 @@ model Listing {
   contactPreference    ContactPreference @default(CALL)
   viewsCount           Int               @default(0)
   favoritesCount       Int               @default(0)
+  isFeatured           Boolean           @default(false)
+  featuredUntil        DateTime?
   postedAt             DateTime?
   approvedAt           DateTime?
   expiresAt            DateTime?
@@ -268,6 +294,44 @@ model Listing {
   @@index([createdAt])
   @@index([status, type])
   @@index([status, createdAt])
+}
+
+model SubscriptionPackage {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  priceMonthly    Decimal  @db.Decimal(10, 3)
+  currency        Currency @default(BHD)
+  maxListings     Int      // max active listings allowed
+  durationDays    Int      @default(30)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subscriptions   Subscription[]
+
+  @@index([isActive])
+}
+
+model Subscription {
+  id               String             @id @default(uuid())
+  userId           String             @unique
+  packageId        String
+  status           SubscriptionStatus @default(ACTIVE)
+  startDate        DateTime
+  endDate          DateTime
+  listingsUsed     Int                @default(0)
+  paidAmount       Decimal            @db.Decimal(10, 3)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package SubscriptionPackage @relation(fields: [packageId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([endDate])
 }
 
 model ChatThread {
@@ -319,6 +383,9 @@ model CarDetails {
   fuel         FuelType     @default(PETROL)
   condition    CarCondition @default(USED)
   color        String?
+  interiorColor String?
+  bodyCondition String?      // Detailed body condition e.g. "Good (minor defects)"
+  paintType    String?       // e.g. "Original Paint", "Partially Repainted"
   vin          String?
   bodyType     String?
   engineSize   String?
@@ -345,6 +412,8 @@ model MotorcycleDetails {
   transmission Transmission
   condition    CarCondition
   color        String?
+  engineSize   String?       // e.g. "600cc", "1000cc"
+  bodyType     String?       // e.g. "Sport", "Cruiser"
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -384,6 +453,7 @@ model PartDetails {
   compatibleYearFrom     Int?
   compatibleYearTo       Int?
   condition              PartCondition @default(USED)
+  deliveryAvailable      Boolean       @default(false)
   partNumber             String?       // OEM or aftermarket part number
   brand                  String?
   createdAt              DateTime      @default(now())
@@ -421,21 +491,30 @@ model Media {
 }
 
 model PaymentTransaction {
-  id          String        @id @default(uuid())
-  listingId   String
-  amount      Decimal       @db.Decimal(10, 3)
-  currency    Currency      @default(BHD)
-  status      PaymentStatus @default(PENDING)
-  provider    String?       // e.g., "benefit", "credimax", "manual"
-  providerRef String?       // External reference from payment provider
-  metadata    Json?         // Additional payment metadata
-  paidAt      DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             String        @id @default(uuid())
+  userId         String
+  listingId      String?
+  subscriptionId String?
+  paymentType    String        @default("LISTING_FEE") // LISTING_FEE or SUBSCRIPTION
+  amount         Decimal       @db.Decimal(10, 3)
+  currency       Currency      @default(BHD)
+  status         PaymentStatus @default(PENDING)
+  provider       String?       @default("benefit")
+  providerRef    String?
+  metadata       Json?
+  proofImageUrl  String?
+  adminNote      String?
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   // Relations
-  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@index([listingId])
   @@index([status])
   @@index([providerRef])
@@ -641,6 +720,57 @@ model AdminVideo {
   updatedAt    DateTime @updatedAt
 
   @@index([isActive])
+  @@index([createdAt])
+}
+
+model Advertisement {
+  id           String    @id @default(uuid())
+  title        String?
+  mediaUrl     String
+  mediaType    String    @default("IMAGE") // "IMAGE" | "VIDEO"
+  thumbnailUrl String?
+  linkUrl      String?
+  isActive     Boolean   @default(true)
+  sortOrder    Int       @default(0)
+  startDate    DateTime?
+  endDate      DateTime?
+  viewsCount   Int       @default(0)
+  clicksCount  Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@index([createdAt])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+model FeaturedPackage {
+  id          String   @id @default(uuid())
+  nameAr      String
+  price       Float
+  durationDays Int
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+model BroadcastLog {
+  id         String   @id @default(uuid())
+  title      String
+  body       String
+  targetType String   @default("ALL") // "ALL" | "REGISTERED"
+  sentByUserId String
+  sentCount  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  sentBy User @relation(fields: [sentByUserId], references: [id], onDelete: Cascade)
+
   @@index([createdAt])
 }
 

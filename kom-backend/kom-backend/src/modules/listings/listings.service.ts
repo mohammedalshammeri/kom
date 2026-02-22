@@ -25,6 +25,7 @@ import {
   CreateMotorcycleDetailsDto,
 } from './dto';
 import { PaginatedResponse } from '../../common/dto';
+import { PackagesService } from '../packages/packages.service';
 
 
 @Injectable()
@@ -33,6 +34,7 @@ export class ListingsService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
+    private readonly packagesService: PackagesService,
   ) {}
 
   async createListing(userId: string, dto: CreateListingDto) {
@@ -283,6 +285,14 @@ export class ListingsService {
 
     if (listing.status !== ListingStatus.DRAFT && listing.status !== ListingStatus.REJECTED) {
       throw new BadRequestException('Listing cannot be submitted in current status');
+    }
+
+    // Check merchant subscription (showroom users must have an active subscription)
+    if (listing.owner?.role === UserRole.USER_SHOWROOM) {
+      const check = await this.packagesService.canMerchantPost(userId);
+      if (!check.allowed) {
+        throw new ForbiddenException(check.reason);
+      }
     }
 
     // Validate listing completeness

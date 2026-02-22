@@ -222,6 +222,62 @@ export class NotificationsService {
     return this.createNotification(userId, NotificationType.SYSTEM, title, body, {});
   }
 
+  async broadcastToAll(
+    title: string,
+    body: string,
+    targetType: 'ALL' | 'REGISTERED',
+    adminId: string,
+  ) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        isBanned: false,
+        role: { in: [UserRole.USER_INDIVIDUAL, UserRole.USER_SHOWROOM] },
+      },
+      select: { id: true },
+    });
+
+    // Create in-app notifications in bulk
+    await this.prisma.notification.createMany({
+      data: users.map((u) => ({
+        userId: u.id,
+        type: NotificationType.BROADCAST,
+        title,
+        body,
+        isRead: false,
+      })),
+      skipDuplicates: true,
+    });
+
+    // Send push notifications (fire-and-forget)
+    void Promise.allSettled(
+      users.map((u) => this.pushService.sendPushNotification(u.id, title, body, { type: 'BROADCAST' })),
+    );
+
+    // Log the broadcast
+    await this.prisma.broadcastLog.create({
+      data: {
+        title,
+        body,
+        targetType,
+        sentByUserId: adminId,
+        sentCount: users.length,
+      },
+    });
+
+    return { sentCount: users.length };
+  }
+
+  async getBroadcastHistory() {
+    return this.prisma.broadcastLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        sentBy: { select: { id: true, email: true } },
+      },
+    });
+  }
+
   async notifyAdmins(
     type: NotificationType,
     title: string,

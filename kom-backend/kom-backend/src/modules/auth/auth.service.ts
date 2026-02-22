@@ -75,7 +75,7 @@ export class AuthService {
             userId: newUser.id,
             showroomName: dto.showroomName,
             crNumber: dto.crNumber,
-            merchantType: dto.merchantType,
+            merchantType: dto.merchantType ?? null,
             governorate: dto.governorate,
             city: dto.city,
           },

@@ -1,4 +1,4 @@
-import { PrismaClient, ListingType, ListingStatus, UserRole, Transmission, FuelType, CarCondition, StorageProvider, MediaType } from '@prisma/client';
+import { PrismaClient, ListingType, ListingStatus, UserRole, Transmission, FuelType, CarCondition, PartCondition, StorageProvider, MediaType, StoryStatus } from '@prisma/client';
 
 console.log("Script loaded");
 
@@ -32,6 +32,7 @@ const colors = ['أبيض', 'أسود', 'فضي', 'رمادي', 'أحمر', 'أ�
 const governorates = ['العاصمة', 'المحرق', 'الشمالية', 'الجنوبية'];
 const areas = ['المنامة', 'الرفاع', 'مدينة عيسى', 'مدينة حمد', 'الحد', 'سار', 'الجفير', 'السيف', 'البديع'];
 const bodyTypes = ['سيدان', 'دفع رباعي', 'كوبيه', 'كشف', 'هاتشباك', 'بيك أب', 'فان'];
+const motoBodyTypes = ['رياضية', 'كروزر', 'سكوتر', 'تيورنج', 'أخرى'];
 const partCategories = ['محرك', 'قير', 'هيكل', 'داخلية', 'عجلات', 'إلكترونيات', 'نظام تعليق', 'فرامل'];
 const plateCategories = ['خصوصي', 'تجاري', 'دراجة نارية', 'دبلوماسي'];
 
@@ -178,6 +179,8 @@ async function main() {
             transmission: getRandom(Object.values(Transmission)),
             condition: mileage === 0 ? CarCondition.NEW : CarCondition.USED,
             color: getRandom(colors),
+            bodyType: getRandom(motoBodyTypes),
+            engineSize: `${getRandomInt(250, 1300)}cc`
           }
         },
         media: {
@@ -257,8 +260,9 @@ async function main() {
             partName: `${partCat} كامل`,
             partNumber: `PN-${getRandomInt(10000, 99999)}`,
             compatibleCarMake: brand.make,
-            condition: getRandom(Object.values(CarCondition)),
+            condition: getRandom(Object.values(PartCondition)),
             brand: 'وكالة',
+            deliveryAvailable: Math.random() > 0.5
           }
         },
         media: {
@@ -278,7 +282,66 @@ async function main() {
     });
   }
 
-  console.log('✅ Done! Generated 200 listings (Arabic).');
+  // 6. Generate Admin Videos (Tutorials & Promo)
+  console.log('🎥 Generating Admin Videos...');
+  const adminVideoUrls = [
+      'https://videos.pexels.com/video-files/3196236/3196236-uhd_2560_1440_25fps.mp4', 
+      'https://videos.pexels.com/video-files/855564/855564-hd_1920_1080_24fps.mp4',
+      'https://videos.pexels.com/video-files/4489776/4489776-uhd_3840_2160_25fps.mp4'
+  ];
+  
+  for(let i=0; i<3; i++) {
+    await prisma.adminVideo.create({
+        data: {
+            title: i===0 ? 'طريقة إضافة إعلان' : (i===1 ? 'جولة في المعرض' : 'مراجعة تويوتا كامري'),
+            description: 'فيديو توضيحي يشرح كيفية استخدام التطبيق والاستفادة من المميزات.',
+            videoUrl: adminVideoUrls[i],
+            thumbnailUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80',
+            viewsCount: getRandomInt(100, 5000),
+            isActive: true
+        }
+    });
+  }
+
+  // 7. Generate User Stories
+  console.log('📱 Generating Stories...');
+  for(let i=0; i<10; i++) {
+     const isVideo = Math.random() > 0.5;
+     await prisma.story.create({
+         data: {
+             userId: userId,
+             mediaType: isVideo ? MediaType.VIDEO : MediaType.IMAGE,
+             mediaUrl: isVideo 
+                ? 'https://videos.pexels.com/video-files/5225154/5225154-hd_1920_1080_30fps.mp4' 
+                : 'https://images.unsplash.com/photo-1542281286-9e0a16bb7366',
+             duration: isVideo ? 15 : 5,
+             status: StoryStatus.ACTIVE,
+             postedAt: new Date(),
+             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Expires in 24h
+             viewsCount: getRandomInt(10, 200),
+             likesCount: getRandomInt(0, 50)
+         }
+     });
+  }
+
+  // 8. Add Videos to some Cars
+  console.log('📹 Adding videos to some listings...');
+  const someCars = await prisma.listing.findMany({ where: { type: ListingType.CAR }, take: 5 });
+  for (const car of someCars) {
+      await prisma.media.create({
+          data: {
+              listingId: car.id,
+              type: MediaType.VIDEO,
+              storageProvider: StorageProvider.S3,
+              objectKey: `mock/car-video/${car.id}`,
+              url: 'https://videos.pexels.com/video-files/2882787/2882787-uhd_2560_1440_30fps.mp4',
+              mimeType: 'video/mp4',
+              sortOrder: 1
+          }
+      });
+  }
+
+  console.log('✅ Done! Generated 200 listings, Admin Videos, and Stories (Arabic).');
 }
 
 main()

@@ -53,6 +53,21 @@ export class CarDetailsDto {
   @IsString()
   color?: string;
 
+  @ApiPropertyOptional({ example: 'Beige' })
+  @IsOptional()
+  @IsString()
+  interiorColor?: string;
+
+  @ApiPropertyOptional({ example: 'Good (minor defects)' })
+  @IsOptional()
+  @IsString()
+  bodyCondition?: string;
+
+  @ApiPropertyOptional({ example: 'Original Paint' })
+  @IsOptional()
+  @IsString()
+  paintType?: string;
+
   @ApiPropertyOptional({ example: '1HGBH41JXMN109186' })
   @IsOptional()
   @IsString()

@@ -21,6 +21,9 @@ import { ChatsModule } from './modules/chats/chats.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { StoriesModule } from './modules/stories/stories.module';
 import { AdminVideosModule } from './modules/admin-videos/admin-videos.module';
+import { AdvertisementsModule } from './modules/advertisements/advertisements.module';
+import { PackagesModule } from './modules/packages/packages.module';
+import { FeaturedModule } from './modules/featured/featured.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -71,6 +74,9 @@ import configuration from './config/configuration';
     TasksModule,
     StoriesModule,
     AdminVideosModule,
+    AdvertisementsModule,
+    PackagesModule,
+    FeaturedModule,
   ],
   providers: [
     {
